@@ -51,11 +51,20 @@ def model_setattr(self, attr, value):
     object.__setattr__(self, attr, value)
 
 
+def control_method(func):
+    func._control = True
+    return func
+
 class ModelBase(type):
     def __new__(metacls, name, bases, namespace):
-        for attr_name, value in namespace.items():
+
+        for attr_name, value in namespace.copy().items():
             if isinstance(value, Field):
                 value.name = attr_name
+            if getattr(value, "_control", False):
+                namespace["_ctl_" + attr_name] = value
+                del namespace[attr_name]
+
         if not "__setattr__" in namespace:
             namespace["__setattr__"] = model_setattr
 
@@ -67,6 +76,19 @@ class Model(metaclass=ModelBase):
 
     def __init__(self):
         self.id = uuid.uuid4()
+
+    @control_method
+    def serialize(self):
+        result = {}
+        for attr in dir(self):
+            if not hasattr(getattr(self.__class__, attr, None), "serialize"):
+                continue
+            try:
+                value = getattr(self.__class__, attr).serialize(self)
+            except (AttributeError, KeyError):
+                continue
+            result[attr] = value
+        return result
 
 
 class Pessoa(Model):
